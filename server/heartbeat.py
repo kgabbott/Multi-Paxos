@@ -8,7 +8,6 @@ BEAT_TIMEOUT = None
 
 def heartbeat_send():
   global LAST_BEAT
-  # print "Sending heartbeat"
   if (time.time()-LAST_BEAT) > BEAT_DELAY:
     communication.send_mess(message.Message(Message = "Heartbeat"))
     LAST_BEAT = time.time()

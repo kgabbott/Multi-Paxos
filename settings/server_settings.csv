@@ -1,2 +1,2 @@
-beatDelay, 1
-beatTimeout, 5
+beatDelay, .5
+beatTimeout, 10

@@ -1,4 +1,4 @@
-from threading import *
+import threading
 
 LOCAL_MESS_BUF = []
 LOCAL_LOCK = threading.Lock()

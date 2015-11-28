@@ -8,7 +8,8 @@ ADDRESSES = {}
 NODE_ID = {}
 LEADER = None
 
-def send_message(name, message):
+
+def send_value(name, message):
   send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   send_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
   send_socket.connect(ADDRESSES[name])
@@ -61,13 +62,23 @@ if __name__ == "__main__":
   settings = load_settings(["../settings/settings.csv","../settings/client_settings.csv"])
   get_server_info(settings["numNodes"])
 
+  MessageId = 1
+
   while(1):
-    input = raw_input("New Value: ")
+    value = raw_input("New Value: ")
+    message = ":".join([str(MessageId),value])
     for name in NAMES.values():
-      data = send_message(name, input)
-      if data == "Processing":
-        print "%s is Processing value" % name
-      else:
-        print "%s says leader is %s" % (name, data)
+      data = send_value(name, message)
+      if len(data) > 1:
+        if data[0] == 'R':
+          data = data.split(":")
+          cvalue = data[-1]
+          if cvalue == value:
+            print "Value Chosen"
+          else:
+            print "Value Rejected"
+        else:
+          print "Leader is %s"%data
+    MessageId += 1
 
 

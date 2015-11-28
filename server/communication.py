@@ -1,7 +1,8 @@
 from threading import *
 from message import *
 from heartbeat import *
-import socket, threading, select, sys, errno, csv, time, atexit
+from propose import *
+import socket, threading, select, sys, errno, csv, time, atexit, math
 
 OUT_BUF = []
 OUT_BUF_LOCK = threading.Lock()
@@ -18,20 +19,24 @@ NODE_ID = {}
 # Name to status mapping (0=offline, 1=online,2=leader)
 STATUS = {}
 LEADER = None
+ROUND = 0
 
 LISTEN = None
 
 HOSTNAME = None
+
+MAJORITY = 0
 
 def exit_handler():
   if LISTEN:
     LISTEN.close()
 
 def connection_init(num_nodes):
-  global NAMES, ADDRESSES, STATUS, NODE_ID, SOCKETS, LISTEN, LEADER, HOSTNAME
+  global NAMES, ADDRESSES, STATUS, NODE_ID, SOCKETS, LISTEN, LEADER, HOSTNAME, MAJORITY
   atexit.register(exit_handler)
 
   HOSTNAME = socket.gethostname().split(".")[0]
+  MAJORITY = num_nodes/2+1
 
   with open('../settings/peernames%d.csv'%num_nodes, 'rb') as f:
     reader = csv.reader(f)
@@ -46,6 +51,8 @@ def connection_init(num_nodes):
   for name,nid in NODE_ID.items():
     if nid == leader_id:
       LEADER = name
+      ROUND = 1
+      setProposalId("%d.%d"%(ROUND, NODE_ID[LEADER]))
 
   print "[NODE %d: %s]" % (NODE_ID[HOSTNAME],HOSTNAME)
 
@@ -72,7 +79,7 @@ def connection_init(num_nodes):
         break
       except socket.error, e:
         err = e.args[0]
-        if err != errno.ECONNREFUSED and err!=ETIMEDOUT:
+        if err != errno.ECONNREFUSED and err!=errno.ETIMEDOUT:
           print e
           sys.exit(1)
   last_t = 0
@@ -159,11 +166,11 @@ def connection_thread():
         s.close()
       except socket.error, e:
         err = e.args[0]
-        if err != errno.ECONNREFUSED and err != errno.ETIMEDOUT:
+        if err != errno.ECONNREFUSED and err != errno.ETIMEDOUT and err != errno.EADDRNOTAVAIL:
+          print str(out_addr) + ":"+out_mess.get_mess()
           print e
           sys.exit(1)
-      else:
-        if(out_mess.get_wait()):
+        elif out_mess.get_wait():
           OUT_BUF_LOCK.acquire()
           OUT_BUF.append(out_mess)
           OUT_BUF_LOCK.release()

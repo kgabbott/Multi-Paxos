@@ -9,13 +9,13 @@ def load_settings(setting_files):
     with open(s, 'rb') as f:
       reader = csv.reader(f)
       for row in reader:
-        settings[row[0]] = int(row[1])
+        settings[row[0]] = row[1]
   return settings
 
 def setup():
   settings = load_settings(["../settings/settings.csv","../settings/server_settings.csv"])
-  connection_init(settings["numNodes"])
-  heartbeat_init(settings["beatDelay"], settings["beatTimeout"])
+  connection_init(int(settings["numNodes"]))
+  heartbeat_init(float(settings["beatDelay"]), int(settings["beatTimeout"]))
 
 if __name__ == "__main__":
   setup()
