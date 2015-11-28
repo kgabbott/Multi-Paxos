@@ -105,7 +105,3 @@ def accept_response(args):
 def setProposalId(id):
   global ProposalId
   ProposalId = id
-
-
-
-

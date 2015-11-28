@@ -123,6 +123,3 @@ def local_message_check():
   message = local_communication.get_local_mess()
   if message:
     local_message_process(message)
-
-def loop():
-  print "hell0"

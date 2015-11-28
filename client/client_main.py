@@ -80,5 +80,3 @@ if __name__ == "__main__":
         else:
           print "Leader is %s"%data
     MessageId += 1
-
-

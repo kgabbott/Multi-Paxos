@@ -23,6 +23,3 @@ if __name__ == "__main__":
     heartbeat_send()
     message_check()
     local_message_check()
-
-
-
