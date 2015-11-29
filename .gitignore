@@ -1,3 +1,4 @@
 test.py
 *.pyc
-storage_*.csv
+storage*.csv
+log*

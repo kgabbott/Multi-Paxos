@@ -4,14 +4,14 @@ A_Values = {}
 A_Proposals = {}
 A_Accepted = {}
 
-ClientsMessageById = {}
+ClientsId = {}
 
 firstUnchosenIndex = 0
-largestIndex = 0
+largestIndex = -1
 
 def accept_value(index):
   with open("storage/storage_%s.csv"%communication.HOSTNAME,"a+") as f:
-    f.write("%d, %s, %s\n"%(index, A_Proposals[index], A_Values[index]))
+    f.write("%d,%s,%s,%s\n"%(index, A_Proposals[index], ClientsId[index], A_Values[index]))
 
 def accept_init():
   global A_Values, A_Proposals, A_Accepted, firstUnchosenIndex, largestIndex
@@ -20,38 +20,40 @@ def accept_init():
     with open(storage_file, 'rb') as f:
       reader = csv.reader(f)
       for row in reader:
-        [i, proposal, value] = row
+        [i, proposal, client_id, value] = row
         i = int(i)
         A_Values[i] = value
         A_Proposals[i] = proposal
+        ClientsId[i] = client_id
         A_Accepted[i] = 1
-        print "Loaded accepted value: %s at index: %d" % (value, i)
+        print "Loaded accepted value: [%s] at index: %d" % (value, i)
         if i > largestIndex:
-          largestIndex = i+1
+          largestIndex = i
   minUnchosen = largestIndex
   for i in range(0, largestIndex):
     if i not in A_Accepted.keys():
       A_Accepted[i] = 0
       if minUnchosen == largestIndex:
         minUnchosen = i
-  firstUnchosenIndex = minUnchosen
+  firstUnchosenIndex = max(0,minUnchosen)
 
 def propose_process(args):
   global firstUnchosenIndex, A_Proposals, A_Values, A_Accepted, largestIndex
 
-  [ProposalId, value, message_id, index, proposers_firstunchosen] = args
+  [ProposalId, value, client_id, index, proposers_firstunchosen] = args
   index = int(index)
   proposers_firstunchosen = int(proposers_firstunchosen)
 
-  ClientsMessageById[message_id] = value
   if index in A_Values.keys():
     if not A_Accepted[index] and float(A_Proposals[index]) < float(ProposalId):
       A_Proposals[index] = ProposalId
       A_Values[index] = value
+      ClientsId[index] = client_id
   else:
     A_Values[index] = value
     A_Accepted[index] = 0
     A_Proposals[index] = ProposalId
+    ClientsId[index] = client_id
 
   i = proposers_firstunchosen-1
   while i >= firstUnchosenIndex:
@@ -67,12 +69,12 @@ def propose_process(args):
 
   largestIndex = max(index, largestIndex)
 
-  response = "%d:%s:%s"%(index, A_Proposals[index], A_Values[index])
+  response = "%d:%s:%s:%s"%(index, A_Proposals[index], ClientsId[index], A_Values[index])
   return response
 
 def accept_response(args):
   global A_Accepted, A_Proposals, firstUnchosenIndex
-  [index, ProposalId, value] = args
+  [index, ProposalId, client_id, value] = args
   index = int(index)
 
   newlyAccepted = False
@@ -87,6 +89,7 @@ def accept_response(args):
     if float(A_Proposals[index]) < float(ProposalId):
       A_Proposals[index] = ProposalId
       A_Values[index] = value
+      ClientsId[index] = index
       newlyAccepted = True
     if newlyAccepted:
       accept_value(index)
@@ -94,31 +97,36 @@ def accept_response(args):
 
     if index == firstUnchosenIndex:
       while(firstUnchosenIndex<largestIndex+1):
-          if A_Accepted[firstUnchosenIndex]:
-            firstUnchosenIndex+=1
+        if firstUnchosenIndex in A_Accepted.keys() and A_Accepted[firstUnchosenIndex]:
+          firstUnchosenIndex+=1
+        else:
+          break
 
-  response = ("%d:%s:%s:%d")%(index, A_Proposals[index], A_Values[index], firstUnchosenIndex)
+  response = ("%d:%s:%s:%s:%d")%(index, A_Proposals[index], ClientsId[index], A_Values[index], firstUnchosenIndex)
   return response
 
 def success(args):
   global firstUnchosenIndex, A_Accepted, A_Proposals, A_Values
-  [index, ProposalId, value] = args
+  [index, ProposalId, ClientsId, value] = args
   index = int(index)
 
-  if index not in A_Accepted():
+  if index not in A_Accepted.keys():
     A_Accepted[index] = 0
 
   if not A_Accepted[index]:
     A_Accepted[index] = True
     A_Proposals[index] = ProposalId
     A_Values[index] = value
+    ClientsId[index] = ClientsId
     print "[Acceptor] The value [%s] at index:%d has been chosen"%(A_Values[index], index)
     accept_value(index)
 
     if index == firstUnchosenIndex:
       while(firstUnchosenIndex<largestIndex+1):
-          if A_Accepted[firstUnchosenIndex]:
-            firstUnchosenIndex+=1
+        if firstUnchosenIndex in A_Accepted.keys() and A_Accepted[firstUnchosenIndex]:
+          firstUnchosenIndex+=1
+        else:
+          break
   if firstUnchosenIndex<largestIndex:
     response = ("%d")%(firstUnchosenIndex)
   else:

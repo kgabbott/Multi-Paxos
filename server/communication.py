@@ -68,7 +68,7 @@ def connection_init(num_nodes):
     sys.exit()
 
   t = time.time()
-  while -1 in STATUS.values() and time.time() - t < 5:
+  while -1 in STATUS.values() and time.time() - t < 2:
     for name, value in STATUS.items():
       if value == -1:
         try:
@@ -237,7 +237,7 @@ def am_leader():
 def new_leader(newLeader, newRound, maxIndex):
   global STATUS, LEADER, ROUND, NEW_LEADER
   NEW_LEADER = None
-  print "New leader is [NODE %d: %s] for round %d" % (NODE_ID[newLeader], newLeader, newRound)
+  print "Leader is [NODE %d: %s] for round %d" % (NODE_ID[newLeader], newLeader, newRound)
   if LEADER and STATUS[LEADER]:
     STATUS[LEADER] = 1
   LEADER = newLeader

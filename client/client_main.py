@@ -1,4 +1,4 @@
-import socket, time, atexit, csv, errno, random
+import socket, time, atexit, csv, errno, random, os
 
 # IP to name mapping
 NAMES = {}
@@ -60,18 +60,20 @@ def get_server_info(numNodes):
 def load_settings(setting_files):
   settings = {}
   for s in setting_files:
-    with open(s, 'rb') as f:
-      reader = csv.reader(f)
-      for row in reader:
-        settings[row[0]] = int(row[1])
+    if os.path.exists(s):
+      with open(s, 'rb') as f:
+        reader = csv.reader(f)
+        for row in reader:
+          settings[row[0]] = int(row[1])
   return settings
 
-if __name__ == "__main__":
-  global LEADER
-  settings = load_settings(["../settings/settings.csv","../settings/client_settings.csv"])
-  get_server_info(settings["numNodes"])
+def write_log(name, value):
+  with open("log.csv","a+") as f:
+    f.write("%s,%s\n"%(name, value))
 
-  MessageId = 1
+def process_input(loadedIndex):
+  global LEADER
+  MessageId = loadedIndex+1
 
   while(1):
     value = raw_input("New Value: ")
@@ -88,6 +90,19 @@ if __name__ == "__main__":
           if cvalue == value:
             print "Value Chosen"
             sending = False
+          else:
+            MessageId += 1
+            write_log("largestMessageId", str(MessageId))
+            message = ":".join([str(MessageId),value])
         else:
           LEADER = data
     MessageId += 1
+
+if __name__ == "__main__":
+  settings = load_settings(["../settings/settings.csv","log.csv"])
+  get_server_info(settings["numNodes"])
+
+  id = 0
+  if "largestMessageId" in settings.keys():
+    id = int(settings["largestMessageId"])
+  process_input(id)
