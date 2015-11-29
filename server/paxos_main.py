@@ -1,7 +1,7 @@
 from communication import *
 from heartbeat import *
 from message import *
-import time, csv
+import time, csv, accept
 
 def load_settings(setting_files):
   settings = {}
@@ -16,6 +16,7 @@ def setup():
   settings = load_settings(["../settings/settings.csv","../settings/server_settings.csv"])
   connection_init(int(settings["numNodes"]))
   heartbeat_init(float(settings["beatDelay"]), int(settings["beatTimeout"]))
+  accept.accept_init()
 
 if __name__ == "__main__":
   setup()

@@ -1,4 +1,4 @@
-import communication, heartbeat, local_communication, propose, accept
+import communication, heartbeat, propose, accept
 class Message(object):
 
   def __init__(self,Addr = None, Local = False, Message = "", Wait = False, Client = False):
@@ -32,17 +32,20 @@ def message_process(message):
     else:
       communication.send_mess(Message(Addr = name, Wait = True, Client = True,
         Message = "%s" % communication.LEADER))
-  elif data == "Heartbeat":
-    heartbeat.heartbeat_process(name, data)
-  elif data == "?":
-    communication.send_mess(Message(Addr = addr, Message = "RESET"))
-    print "[NODE %d: %s] is back online" % (NODE_ID[addr], addr)
   elif len(data)>1:
-    print ("[%s] %s") %(name, data)
     data_split = data.split(":")
     function = data_split[0]
     response = None
-    if function == "P":
+    if function == "SYN":
+      communication.send_mess(Message(Addr = name, Message = "ACK"))
+      print "[NODE %d: %s] is back online" % (communication.NODE_ID[name], name)
+      communication.set_online(name)
+      heartbeat.reset(name)
+
+    elif function == "H":
+      heartbeat.heartbeat_process(name, data_split[1:])
+
+    elif function == "P":
       response = accept.propose_process(data_split[1:])
       response = "PR:"+response
       communication.send_mess(Message(Addr = name, Wait = True, Message = response))
@@ -80,15 +83,17 @@ def  message_check():
 
 def local_message_process(message):
   data = message.get_mess()
-  print ("[%s] %s") %("Local", data)
+  # print ("[%s] %s") %("Local", data)
   data_split = data.split(":")
   function = data_split[0]
   response = None
-  if function == "P":
+  if function == "H":
+      heartbeat.heartbeat_process(communication.HOSTNAME, data_split[1:])
+  elif function == "P":
     response = accept.propose_process(data_split[1:])
     response = "PR:"+response
     local_response = Message(Local = True, Message = response)
-    local_communication.send_local_mess(local_response)
+    communication.send_local_mess(local_response)
 
   elif function == "PR":
     propose.prepare_response(data_split[1:])
@@ -97,29 +102,29 @@ def local_message_process(message):
     response = accept.accept_response(data_split[1:])
     response = "AR:"+response
     local_response = Message(Local = True, Message = response)
-    local_communication.send_local_mess(local_response)
+    communication.send_local_mess(local_response)
 
   elif function == "AR":
     reponse = propose.accept_response(data_split[1:])
     if response:
       response = "S:"+response
       local_response = Message(Local = True, Message = response)
-      local_communication.send_local_mess(local_response)
+      communication.send_local_mess(local_response)
 
   elif function == "S":
     response = accept.success(data_split[1:])
     if response:
       response = "SR:"+response
       local_response = Message(Local = True, Message = response)
-      local_communication.send_local_mess(local_response)
+      communication.send_local_mess(local_response)
 
   elif function == "SR":
     response = propose.success_response(int(data[1]))
     if response:
       response = "S:"+response
       local_response = Message(Local = True, Message = response)
-      local_communication.send_local_mess(local_response)
+      communication.send_local_mess(local_response)
 def local_message_check():
-  message = local_communication.get_local_mess()
+  message = communication.get_local_mess()
   if message:
     local_message_process(message)

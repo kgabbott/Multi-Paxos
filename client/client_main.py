@@ -1,4 +1,4 @@
-import socket, time, atexit, csv, errno
+import socket, time, atexit, csv, errno, random
 
 # IP to name mapping
 NAMES = {}
@@ -6,15 +6,23 @@ NAMES = {}
 ADDRESSES = {}
 # Name to Node ID Mapping
 NODE_ID = {}
-LEADER = None
+global LEADER
 
 
 def send_value(name, message):
-  send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  send_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-  send_socket.connect(ADDRESSES[name])
-  send_socket.send(message)
-  send_socket.close()
+  try:
+    send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    send_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+    send_socket.connect(ADDRESSES[name])
+    send_socket.send(message)
+    send_socket.close()
+  except socket.error, e:
+    err =  e.args[0]
+    if err in [errno.ECONNREFUSED,errno.ETIMEDOUT]:
+      return e.args[0]
+    else:
+      print e
+      sys.exit(1)
 
   data = None
 
@@ -36,6 +44,7 @@ def send_value(name, message):
   return data
 
 def get_server_info(numNodes):
+  global LEADER
   with open('../settings/peernames%d.csv'%numNodes, 'rb') as f:
     reader = csv.reader(f)
     for row in reader:
@@ -47,7 +56,6 @@ def get_server_info(numNodes):
   for name,nid in NODE_ID.items():
     if nid == leader_id:
       LEADER = name
-  print "LEADER is [NODE %d: %s]" %(NODE_ID[LEADER], LEADER)
 
 def load_settings(setting_files):
   settings = {}
@@ -59,6 +67,7 @@ def load_settings(setting_files):
   return settings
 
 if __name__ == "__main__":
+  global LEADER
   settings = load_settings(["../settings/settings.csv","../settings/client_settings.csv"])
   get_server_info(settings["numNodes"])
 
@@ -67,16 +76,18 @@ if __name__ == "__main__":
   while(1):
     value = raw_input("New Value: ")
     message = ":".join([str(MessageId),value])
-    for name in NAMES.values():
-      data = send_value(name, message)
-      if len(data) > 1:
+    sending = True
+    while(sending):
+      data = send_value(LEADER, message)
+      if data == errno.ECONNREFUSED:
+        LEADER = random.sample(set(NAMES.values())-set([LEADER]),1)[0]
+      elif len(data) > 1:
         if data[0] == 'R':
           data = data.split(":")
           cvalue = data[-1]
           if cvalue == value:
             print "Value Chosen"
-          else:
-            print "Value Rejected"
+            sending = False
         else:
-          print "Leader is %s"%data
+          LEADER = data
     MessageId += 1

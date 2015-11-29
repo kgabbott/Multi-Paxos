@@ -10,6 +10,9 @@ OUT_BUF_LOCK = threading.Lock()
 IN_BUF = []
 IN_BUF_LOCK = threading.Lock()
 
+LOCAL_MESS_BUF = []
+LOCAL_LOCK = threading.Lock()
+
 # IP to name mapping
 NAMES = {}
 # Name to (IP,Port) mapping
@@ -19,7 +22,8 @@ NODE_ID = {}
 # Name to status mapping (0=offline, 1=online,2=leader)
 STATUS = {}
 LEADER = None
-ROUND = 0
+NEW_LEADER = None
+ROUND = 1
 
 LISTEN = None
 
@@ -32,7 +36,7 @@ def exit_handler():
     LISTEN.close()
 
 def connection_init(num_nodes):
-  global NAMES, ADDRESSES, STATUS, NODE_ID, SOCKETS, LISTEN, LEADER, HOSTNAME, MAJORITY
+  global NAMES, ADDRESSES, STATUS, NODE_ID, SOCKETS, LISTEN, NEW_LEADER, HOSTNAME, MAJORITY
   atexit.register(exit_handler)
 
   HOSTNAME = socket.gethostname().split(".")[0]
@@ -42,17 +46,10 @@ def connection_init(num_nodes):
     reader = csv.reader(f)
     for row in reader:
       ADDRESSES[row[0]] = (row[1], int(row[2]))
-      if(row[0] != HOSTNAME):
-        STATUS[row[0]] = 0
-        NAMES[row[1]] = row[0]
+      STATUS[row[0]] = -1
+      NAMES[row[1]] = row[0]
       NODE_ID[row[0]] = int(row[3])
-
-  leader_id = max(NODE_ID.values())
-  for name,nid in NODE_ID.items():
-    if nid == leader_id:
-      LEADER = name
-      ROUND = 1
-      setProposalId("%d.%d"%(ROUND, NODE_ID[LEADER]))
+  STATUS[HOSTNAME] = 1
 
   print "[NODE %d: %s]" % (NODE_ID[HOSTNAME],HOSTNAME)
 
@@ -70,21 +67,24 @@ def connection_init(num_nodes):
     print e
     sys.exit()
 
-  for name in NAMES.values():
-    while(1):
-      try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect(ADDRESSES[name])
-        s.close()
-        break
-      except socket.error, e:
-        err = e.args[0]
-        if err != errno.ECONNREFUSED and err!=errno.ETIMEDOUT:
-          print e
-          sys.exit(1)
+  t = time.time()
+  while -1 in STATUS.values() and time.time() - t < 5:
+    for name, value in STATUS.items():
+      if value == -1:
+        try:
+          s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          s.connect(ADDRESSES[name])
+          STATUS[name] = 0
+          s.close()
+          break
+        except socket.error, e:
+          err = e.args[0]
+          if err != errno.ECONNREFUSED and err!=errno.ETIMEDOUT:
+            print e
+            sys.exit(1)
   last_t = 0
   while(0 in STATUS.values()):
-    if last_t==0 or (time.time()-last_t > 1):
+    if last_t==0 or (time.time()-last_t > .25):
       for name, status in STATUS.items():
         if status == 0:
           last_t = time.time()
@@ -92,7 +92,7 @@ def connection_init(num_nodes):
             print "Trying to connect with %s"% name
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect(ADDRESSES[name])
-            s.send("?")
+            s.send("SYN")
             s.close()
           except socket.error, e:
             err = e.args[0]
@@ -104,16 +104,12 @@ def connection_init(num_nodes):
       data = c.recv(4096)
       c.close()
       name = NAMES[address[0]]
-      if data == "?":
+      if data == "SYN":
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect(ADDRESSES[name])
         s.send("ACK")
         s.close()
       if data == "ACK":
-        if NAMES[address[0]] == LEADER:
-          STATUS[name] = 2
-          print "Connected with[NODE %d: %s]: Status 2 (Leader)"% (NODE_ID[name],name)
-        else:
           STATUS[name] = 1
           print "Connected with[NODE %d: %s]: Status 1"% (NODE_ID[name],name)
       if data == "RESET":
@@ -125,11 +121,20 @@ def connection_init(num_nodes):
         print e
         sys.exit(1)
 
+  possibleLeaders = []
+  for name, stat in STATUS.items():
+    if stat == 1:
+      possibleLeaders.append(NODE_ID[name])
+    else:
+      STATUS[name] = 0
+      print "Unable to connect with[NODE %d: %s]: Status %d"% (NODE_ID[name],name, STATUS[name])
+
   comm_thread = Thread(target = connection_thread)
   comm_thread.daemon = True
   comm_thread.start()
 
 def connection_thread():
+  global NEW_LEADER
   last_beat_check = time.time()
 
   while (1):
@@ -180,7 +185,7 @@ def connection_thread():
     if (time.time()-last_beat_check)>1:
       for name in STATUS.keys():
         if STATUS[name]:
-          if not heartbeat_check(name):
+          if name != HOSTNAME and not heartbeat_check(name):
             STATUS[name] = 0
             print "STATUS of [NODE %d: %s] has changed to 0" % (NODE_ID[name], name)
 
@@ -189,7 +194,7 @@ def send_mess(message):
   if not message.get_addr():
     mess = message.get_mess()
     for name in NAMES.values():
-      if STATUS[name] != 0:
+      if name != HOSTNAME and STATUS[name] != 0:
         OUT_BUF.append(Message(Addr = name, Message = mess))
   else:
     OUT_BUF.append(message)
@@ -205,10 +210,53 @@ def recv_mess():
     IN_BUF_LOCK.release()
   return message
 
+def send_local_mess(mess):
+  LOCAL_LOCK.acquire()
+  LOCAL_MESS_BUF.append(mess)
+  LOCAL_LOCK.release()
+
+def get_local_mess():
+  LOCAL_LOCK.acquire()
+  mess = None
+  if len(LOCAL_MESS_BUF):
+    mess = LOCAL_MESS_BUF.pop(0)
+  LOCAL_LOCK.release()
+  return mess
+
 def get_names():
   return NAMES.values()
+
+def set_online(name):
+  STATUS[name] = 1
 
 def am_leader():
   HOSTNAME = socket.gethostname().split(".")[0]
   if HOSTNAME == LEADER:
     return True
+
+def new_leader(newLeader, newRound, maxIndex):
+  global STATUS, LEADER, ROUND, NEW_LEADER
+  NEW_LEADER = None
+  print "New leader is [NODE %d: %s] for round %d" % (NODE_ID[newLeader], newLeader, newRound)
+  if LEADER and STATUS[LEADER]:
+    STATUS[LEADER] = 1
+  LEADER = newLeader
+  STATUS[newLeader] = 2
+  ROUND = newRound
+  if am_leader():
+    propose_init(maxIndex)
+
+def choose_new_leader():
+  global NEW_LEADER
+  maxAlive = None
+  for name in NAMES.values():
+    if STATUS[name]:
+      if maxAlive:
+        if NODE_ID[name] > NODE_ID[maxAlive]:
+          maxAlive = name
+      else:
+        maxAlive = name
+  NEW_LEADER = maxAlive
+
+def get_proposal_id():
+  return "%d.%d"%(ROUND,NODE_ID[HOSTNAME])
