@@ -2,6 +2,7 @@ from communication import *
 from heartbeat import *
 from message import *
 import time, csv, accept
+import signal, sys
 
 def load_settings(setting_files):
   settings = {}
@@ -18,7 +19,12 @@ def setup():
   heartbeat_init(float(settings["beatDelay"]), int(settings["beatTimeout"]))
   accept.accept_init()
 
+def signal_handler(signal, frame):
+  print ""
+  sys.exit(0)
+
 if __name__ == "__main__":
+  signal.signal(signal.SIGINT, signal_handler)
   setup()
   while(1):
     heartbeat_send()

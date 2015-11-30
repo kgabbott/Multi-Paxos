@@ -1,4 +1,4 @@
-import socket, time, atexit, csv, errno, random, os
+import socket, time, atexit, csv, errno, random, os, sys, signal
 
 # IP to name mapping
 NAMES = {}
@@ -6,6 +6,8 @@ NAMES = {}
 ADDRESSES = {}
 # Name to Node ID Mapping
 NODE_ID = {}
+
+CHOSEN = 0
 global LEADER
 
 
@@ -64,19 +66,29 @@ def load_settings(setting_files):
       with open(s, 'rb') as f:
         reader = csv.reader(f)
         for row in reader:
-          settings[row[0]] = int(row[1])
+          if row[0] == "Chosen":
+            if "Chosen" in settings.keys() and int(row[1]) > settings[row[0]]:
+              settings[row[0]] = int(row[1])
+            else:
+              settings[row[0]] = int(row[1])
+          else:
+            settings[row[0]] = int(row[1])
   return settings
 
-def write_log(name, value):
+def write_log(value):
   with open("log.csv","a+") as f:
-    f.write("%s,%s\n"%(name, value))
+    f.write("%s\n"%value)
 
 def process_input(loadedIndex):
-  global LEADER
+  global LEADER, CHOSEN
+  CHOSEN = loadedIndex
   MessageId = loadedIndex+1
 
   while(1):
-    value = raw_input("New Value: ")
+    try:
+      value = raw_input("New Value: ")
+    except (EOFError):
+      break
     message = ":".join([str(MessageId),value])
     sending = True
     while(sending):
@@ -89,20 +101,28 @@ def process_input(loadedIndex):
           cvalue = data[-1]
           if cvalue == value:
             print "Value Chosen"
+            write_log("Chosen,%d,%s"%(MessageId, cvalue))
+            CHOSEN = max(CHOSEN, MessageId)
             sending = False
           else:
             MessageId += 1
-            write_log("largestMessageId", str(MessageId))
+            write_log("Chosen,%d,%s"%(MessageId, cvalue))
             message = ":".join([str(MessageId),value])
         else:
           LEADER = data
     MessageId += 1
 
+def exit_handler(signal = None, frame = None):
+  print ""
+  sys.exit(0)
+
 if __name__ == "__main__":
+  signal.signal(signal.SIGINT, exit_handler)
+  atexit.register(exit_handler)
   settings = load_settings(["../settings/settings.csv","log.csv"])
   get_server_info(settings["numNodes"])
 
   id = 0
-  if "largestMessageId" in settings.keys():
-    id = int(settings["largestMessageId"])
+  if "Chosen" in settings.keys():
+    id = int(settings["Chosen"])
   process_input(id)
