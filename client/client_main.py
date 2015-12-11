@@ -11,7 +11,7 @@ CHOSEN = 0
 global LEADER
 
 
-def send_value(name, message):
+def send_value(name, message, requestTimeout):
   try:
     send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     send_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -21,12 +21,13 @@ def send_value(name, message):
   except socket.error, e:
     err =  e.args[0]
     if err in [errno.ECONNREFUSED,errno.ETIMEDOUT]:
-      return e.args[0]
+      return errno.ETIMEDOUT
     else:
       print e
       sys.exit(1)
 
   data = None
+  t = time.time()
 
   recv_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   recv_socket.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -40,7 +41,13 @@ def send_value(name, message):
       c.close()
     except socket.error, e:
       err = e.args[0]
-      if err != errno.EAGAIN and err != errno.EWOULDBLOCK:
+      if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+        if t - time.time() > requestTimeout:
+          recv_socket.close()
+          return errno.ETIMEDOUT
+      else:
+        recv_socket.close()
+        print e
         return None
   recv_socket.close()
   return data
@@ -79,34 +86,53 @@ def write_log(value):
   with open("log.csv","a+") as f:
     f.write("%s\n"%value)
 
-def process_input(loadedIndex):
+def process_input(loadedIndex, requestTimeout):
   global LEADER, CHOSEN
   CHOSEN = loadedIndex
   MessageId = loadedIndex+1
 
   while(1):
+    value = ""
     try:
-      value = raw_input("New Value: ")
+      valid_functions = ["add", "get", "remove"]
+      while value not in valid_functions:
+        function = raw_input("Function (add/get/remove): ")
+        value = function
+      value += " "+raw_input("Key (cannot contain ':' or ' '): ")
+      if function == "add":
+        value += " "+raw_input("Value (cannot contain ':' or ' '): ")
     except (EOFError):
       break
     message = ":".join([str(MessageId),value])
     sending = True
     while(sending):
-      data = send_value(LEADER, message)
-      if data == errno.ECONNREFUSED:
+      data = send_value(LEADER, message, requestTimeout)
+      if data == errno.ETIMEDOUT:
+        time.sleep(.25)
         LEADER = random.sample(set(NAMES.values())-set([LEADER]),1)[0]
       elif len(data) > 1:
         if data[0] == 'R':
           data = data.split(":")
-          cvalue = data[-1]
-          if cvalue == value:
-            print "Value Chosen"
-            write_log("Chosen,%d,%s"%(MessageId, cvalue))
+          chosen_value = data[1]
+          response = data[2].split(",")
+          if chosen_value == value:
+            function = chosen_value.split(" ")[0]
+            if function == "add":
+              print ("Added Value: %s at Key: %s")%(response[1], response[0])
+            elif function == "get":
+              print response
+              if len(response) > 1:
+                print ("Value at Key: %s is %s")%(response[0], response[1])
+              else:
+                print ("Invalid Key:%s")%(response[0])
+            elif function == "remove":
+              print "Removed value at Key: %s"%response[0]
+            write_log("Chosen,%d,%s"%(MessageId, chosen_value))
             CHOSEN = max(CHOSEN, MessageId)
             sending = False
           else:
             MessageId += 1
-            write_log("Chosen,%d,%s"%(MessageId, cvalue))
+            write_log("Chosen,%d,%s"%(MessageId, chosen_value))
             message = ":".join([str(MessageId),value])
         else:
           LEADER = data
@@ -119,10 +145,10 @@ def exit_handler(signal = None, frame = None):
 if __name__ == "__main__":
   signal.signal(signal.SIGINT, exit_handler)
   atexit.register(exit_handler)
-  settings = load_settings(["../settings/settings.csv","log.csv"])
+  settings = load_settings(["../settings/settings.csv","../settings/client_settings.csv","log.csv"])
   get_server_info(settings["numNodes"])
 
   id = 0
   if "Chosen" in settings.keys():
     id = int(settings["Chosen"])
-  process_input(id)
+  process_input(id, int(settings["requestTimeout"]))

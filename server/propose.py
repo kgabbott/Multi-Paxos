@@ -1,4 +1,4 @@
-import communication, message
+import communication, message, simpleDB
 
 ClientsAddr = {}
 ClientsId = {}
@@ -9,16 +9,18 @@ NumAccepted = {}
 P_Accepted = {}
 NumPrepared = {}
 Chosen = {}
+P_DB = None
+DB_Response = {}
 
 firstUnchosenIndex = 0
 EmptyIndex = 0
 
 ProposalId = None
 
-def client_respond(addr, index):
+def client_respond(addr, index, dbResponse):
   if addr:
     value = P_Values[index]
-    client_reply_mess = "R:%s"%(value)
+    client_reply_mess = "R:%s:%s"%(value, dbResponse)
     client_reply = message.Message(Addr = addr, Wait = True, Client = True,
       Message = client_reply_mess)
     communication.send_mess(client_reply)
@@ -43,7 +45,8 @@ def propose(mess):
     for index, cid in ClientsId.items():
       if cid == client_id:
         if Chosen[index]:
-          client_respond(client_addr, index)
+          if index in DB_Response.keys():
+            client_respond(client_addr, index, DB_Response[index])
           return
         else:
           next_index = index
@@ -68,7 +71,8 @@ def propose(mess):
   EmptyIndex+=1
 
 def propose_init(maxIndex):
-  global EmptyIndex, ProposalId
+  global EmptyIndex, ProposalId, P_DB
+  P_DB = simpleDB.simpleDB()
   ProposalId = "0.0"
   for i in range(0, maxIndex+1):
     propose(message.Message(Message="0:PI"))
@@ -114,6 +118,7 @@ def accept_response(args):
   global ClientsAddr, ClientsId, Chosen
   global P_Proposals, P_Values, NumAccepted, P_Accepted, NumPrepared, Chosen
   global firstUnchosenIndex, EmptyIndex
+  global P_DB, DB_Response
 
   [index, proposalId,  clientid, value, acceptors_firstUnchosen] = args
   index = int(index)
@@ -130,7 +135,6 @@ def accept_response(args):
     if NumPrepared[index] == communication.MAJORITY:
       Chosen[index] = True
       print "[Proposer] The value [%s] at index:%d has been accepted"%(value, index)
-      client_respond(ClientsAddr[index], index)
 
       if index == firstUnchosenIndex:
         while(firstUnchosenIndex<EmptyIndex):
@@ -138,4 +142,9 @@ def accept_response(args):
             firstUnchosenIndex+=1
           else:
             break
+        for i in range(index, firstUnchosenIndex):
+          response = P_DB.apply_value(P_Values[i])
+          DB_Response[i] = response
+          client_respond(ClientsAddr[i], i, response)
+
   return success_response(acceptors_firstUnchosen)

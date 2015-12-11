@@ -229,6 +229,10 @@ def get_names():
 def set_online(name):
   STATUS[name] = 1
 
+def set_round(r):
+  global ROUND
+  ROUND = r
+
 def am_leader():
   HOSTNAME = socket.gethostname().split(".")[0]
   if HOSTNAME == LEADER:

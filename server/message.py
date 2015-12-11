@@ -38,7 +38,7 @@ def message_process(message):
     response = None
     if function == "SYN":
       communication.send_mess(Message(Addr = name, Message = "ACK"))
-      print "[NODE %d: %s] is back online" % (communication.NODE_ID[name], name)
+      print "[NODE %d: %s] is online" % (communication.NODE_ID[name], name)
       communication.set_online(name)
       heartbeat.reset(name)
 
@@ -71,7 +71,7 @@ def message_process(message):
         communication.send_mess(Message(Addr = name, Wait = True, Message = response))
 
     elif function == "SR":
-      response = propose.success_response(int(data[1]))
+      response = propose.success_response(int(data_split[1]))
       if response:
         response = "S:"+response
         communication.send_mess(Message(Addr = name, Wait = True, Message = response))

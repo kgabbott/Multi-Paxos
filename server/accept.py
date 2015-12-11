@@ -15,6 +15,7 @@ def accept_value(index):
 
 def accept_init():
   global A_Values, A_Proposals, A_Accepted, firstUnchosenIndex, largestIndex
+  curRound = 1
   storage_file = "storage/storage_%s.csv"%communication.HOSTNAME
   if os.path.exists(storage_file):
     with open(storage_file, 'rb') as f:
@@ -23,6 +24,7 @@ def accept_init():
         [i, proposal, client_id, value] = row
         i = int(i)
         A_Values[i] = value
+        curRound = max(curRound, 1+int(proposal.split(".")[0]))
         A_Proposals[i] = proposal
         ClientsId[i] = client_id
         A_Accepted[i] = 1
@@ -36,6 +38,7 @@ def accept_init():
       if minUnchosen == largestIndex:
         minUnchosen = i
   firstUnchosenIndex = max(0,minUnchosen)
+  communication.set_round(curRound)
 
 def propose_process(args):
   global firstUnchosenIndex, A_Proposals, A_Values, A_Accepted, largestIndex
@@ -127,11 +130,8 @@ def success(args):
           firstUnchosenIndex+=1
         else:
           break
-  if firstUnchosenIndex<largestIndex:
-    response = ("%d")%(firstUnchosenIndex)
-  else:
-    response = None
-  return response
+
+  return ("%d")%(firstUnchosenIndex)
 
 def get_largest_index():
   return largestIndex
